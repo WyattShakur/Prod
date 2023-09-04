@@ -11,6 +11,54 @@ from tkcalendar import Calendar
 import re
 import threading
 import time
+import os
+import sys
+from datetime import datetime
+
+# Создаем папку для логов, если её нет
+log_folder = "logs"
+if not os.path.exists(log_folder):
+    os.makedirs(log_folder)
+
+# Получаем текущую дату и время
+current_datetime = datetime.now()
+log_filename = f"logfile_{current_datetime.strftime('%d_%m_%Y_%H_%M_%S')}.txt"
+
+# Полный путь к лог-файлу
+log_filepath = os.path.join(log_folder, log_filename)
+
+# Открываем лог файл для записи
+class LogToFile:
+    def __init__(self, log_filename):
+        self.log_filename = log_filename
+        self.original_stdout = sys.stdout
+
+    def __enter__(self):
+        self.log_file = open(self.log_filename, "w")
+        sys.stdout = self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        sys.stdout = self.original_stdout
+        if self.log_file:
+            self.log_file.close()
+
+    def write(self, text):
+        self.original_stdout.write(text)
+        self.log_file.write(text)
+        self.log_file.flush()
+
+# Функция для записи в лог-файл
+def log(message):
+    current_time = datetime.now().strftime("[%H:%M:%S]")
+    formatted_message = f"{current_time} {message}"
+    with open(log_filepath, "a") as log_file:
+        log_file.write(formatted_message + "\n")    
+        print = log
+        print(formatted_message)
+# Используем контекстный менеджер для перенаправления вывода print в файл
+with LogToFile(log_filepath):
+    print("Это сообщение будет записано в лог файл.")
+    log("Еще одно сообщение для лога.")
 #--------------------------------------------- Начало Зоны Баз Данных -----------------------------------------------------
 # Подключение к базе данных MySQL
 conn = mysql.connector.connect(
