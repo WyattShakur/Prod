@@ -15,6 +15,10 @@ import os
 import sys
 from datetime import datetime
 
+import os
+import sys
+from datetime import datetime
+
 # Создаем папку для логов, если её нет
 log_folder = "logs"
 if not os.path.exists(log_folder):
@@ -31,34 +35,31 @@ log_filepath = os.path.join(log_folder, log_filename)
 class LogToFile:
     def __init__(self, log_filename):
         self.log_filename = log_filename
-        self.original_stdout = sys.stdout
+        self.log_file = open(log_filename, "w")
 
     def __enter__(self):
-        self.log_file = open(self.log_filename, "w")
-        sys.stdout = self
+        self.original_stdout = sys.stdout
+        sys.stdout = self.log_file
 
     def __exit__(self, exc_type, exc_value, traceback):
         sys.stdout = self.original_stdout
         if self.log_file:
             self.log_file.close()
 
-    def write(self, text):
-        self.original_stdout.write(text)
-        self.log_file.write(text)
-        self.log_file.flush()
-
-# Функция для записи в лог-файл
+# Функция для записи в лог-файл и вывода в stdout
 def log(message):
     current_time = datetime.now().strftime("[%H:%M:%S]")
     formatted_message = f"{current_time} {message}"
     with open(log_filepath, "a") as log_file:
-        log_file.write(formatted_message + "\n")    
-        print = log
-        print(formatted_message)
-# Используем контекстный менеджер для перенаправления вывода print в файл
+        log_file.write(formatted_message + "\n")
+    sys.stdout.write(formatted_message + "\n")
+    sys.stdout.flush()
+
+# Используем контекстный менеджер для перенаправления вывода в файл и stdout
 with LogToFile(log_filepath):
-    print("Это сообщение будет записано в лог файл.")
-    log("Еще одно сообщение для лога.")
+    pass
+    #log("Это сообщение будет записано в лог файл и выведено на экран.")
+    #log("Еще одно сообщение для лога и вывода.")
 #--------------------------------------------- Начало Зоны Баз Данных -----------------------------------------------------
 # Подключение к базе данных MySQL
 conn = mysql.connector.connect(
@@ -118,6 +119,7 @@ CREATE TABLE IF NOT EXISTS `Grafik Zaniatiy` (
     username VARCHAR(20)
 )
 """
+#log('1')
 cursor.execute(create_grafik_table_query)
 #--------------------------------- Конец Зоны Баз Данных -----------------------------------------------------
 def center_window(window):
@@ -223,7 +225,7 @@ def button_clicked(button_name, username):
     elif button_name == "Мой график занятий":
         open_grafik_window(username)
     else:
-        print(f"Кликнута кнопка {button_name}")
+        log(f"Кликнута кнопка {button_name}")
 
 
 def open_calendar(username):
@@ -251,6 +253,7 @@ def open_notes_window(username):
         # Проверка, что заметка не пуста
         if not note_text.strip():
             messagebox.showerror("Ошибка", "Нельзя добавить пустую заметку.")
+            log("Попытка добавить пустую заметку")
             return
         
          # Изменение формата даты
@@ -325,150 +328,135 @@ def open_notes_window(username):
 def open_grafik_window(username):
     grafik_window = ThemedTk(theme="equilux")
     grafik_window.title("Мой график занятий")
+    try:
+        def update_lessons_list():
+            lessons_listbox.delete(0, "end")
+            select_lessons_query = "SELECT id, date, day_of_week, class, lesson_name, lesson_number, lesson_type FROM `Grafik Zaniatiy` WHERE username = %s ORDER BY date, lesson_number"
+            cursor.execute(select_lessons_query, (username,))
+            global lessons_list
+            lessons_list = cursor.fetchall()
+            for lesson in lessons_list:
+                date = lesson[1].strftime("%d.%m.%Y")
+                day_of_week = lesson[2]
+                class_name = lesson[3]
+                lesson_name = lesson[4]
+                lesson_number = lesson[5]
+                lesson_type = lesson[6]
+                lessons_listbox.insert("end", f"{date}, {day_of_week}, Класс: {class_name}, Урок: {lesson_name}, Урок №{lesson_number}, Тип: {lesson_type}")
 
-    # Уберем параметр username, так как он передается извне
-    def update_lessons_list():
-        lessons_listbox.delete(0, "end")
-        select_lessons_query = "SELECT id, date, day_of_week, class, lesson_name, lesson_number, lesson_type FROM `Grafik Zaniatiy` WHERE username = %s ORDER BY date, lesson_number"
-        cursor.execute(select_lessons_query, (username,))
-        
-        # Добавляем занятия из базы данных в список в интерфейсе
-        for lesson in cursor.fetchall():
-            date = lesson[1].strftime("%d.%m.%Y")
-            day_of_week = lesson[2]
-            class_name = lesson[3]
-            lesson_name = lesson[4]
-            lesson_number = lesson[5]
-            lesson_type = lesson[6]
-            lessons_listbox.insert("end", f"{date}, {day_of_week}, Класс: {class_name}, Урок: {lesson_name}, Урок №{lesson_number}, Тип: {lesson_type}")
+        def on_add_lesson():
+            date = selected_date_label["text"]
+            day_of_week = day_of_week_label["text"]
+            class_name = class_name_entry.get()
+            lesson_name = lesson_name_entry.get()
+            lesson_number = lesson_number_combobox.get()
+            lesson_type = lesson_type_combobox.get()
 
-    def refresh_lessons_list():
-        update_lessons_list()
-        # Запускаем функцию обновления списка через 10 секунд (или другой интервал, по вашему выбору)
-        grafik_window.after(100, refresh_lessons_list)    
-    def add_new_lesson(username, date, day_of_week, class_name, lesson_name, lesson_number, lesson_type):
-        insert_query = "INSERT INTO `Grafik Zaniatiy` (username, date, day_of_week, class, lesson_name, lesson_number, lesson_type) VALUES (%s, %s, %s, %s, %s, %s, %s)"
-        cursor.execute(insert_query, (username, date, day_of_week, class_name, lesson_name, lesson_number, lesson_type))
-        conn.commit()
-        update_lessons_list()
+            if not class_name or not lesson_name or not lesson_number or not lesson_type:
+                messagebox.showerror("Ошибка", "Заполните все поля для добавления занятия. Обратитесь к системному администратору t.me/andrey_joks")
+                log("Попытка подать незаполненную форму в Графике занятий")
+                return
 
-    def on_add_lesson():
-        date = selected_date_label["text"]
-        day_of_week = day_of_week_label["text"]
-        class_name = class_name_entry.get()
-        lesson_name = lesson_name_entry.get()
-        lesson_number = lesson_number_combobox.get()  # Используйте .get(), чтобы получить выбранное значение
-        lesson_type = lesson_type_combobox.get()      # Используйте .get(), чтобы получить выбранное значение
-
-        if not class_name or not lesson_name or not lesson_number or not lesson_type:
-            messagebox.showerror("Ошибка", "Заполните все поля для добавления занятия. Обратитесь к системному администратору t.me/andrey_joks")
-            return
-
-        add_new_lesson(username, date, day_of_week, class_name, lesson_name, lesson_number, lesson_type)
-        update_lessons_list()
-        messagebox.showinfo("Успех", "Занятие добавлено успешно.")
-
-    def on_delete_lesson():
-        selected_lesson = lessons_listbox.curselection()
-        if selected_lesson:
-            lesson_id = lessons_list[selected_lesson[0]][0]
-            delete_lesson(lesson_id)
+            add_new_lesson(username, date, day_of_week, class_name, lesson_name, lesson_number, lesson_type)
             update_lessons_list()
-            messagebox.showinfo("Успех", "Занятие удалено успешно.")
+            messagebox.showinfo("Успех", "Занятие добавлено успешно.")
 
-    def delete_lesson(lesson_id):
+        def add_new_lesson(username, date, day_of_week, class_name, lesson_name, lesson_number, lesson_type):
+            insert_query = "INSERT INTO `Grafik Zaniatiy` (username, date, day_of_week, class, lesson_name, lesson_number, lesson_type) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+            cursor.execute(insert_query, (username, date, day_of_week, class_name, lesson_name, lesson_number, lesson_type))
+            conn.commit()
+            update_lessons_list()
+
+        def on_delete_lesson():
+            selected_lesson = lessons_listbox.curselection()
+            if selected_lesson:
+                lesson_id = lessons_list[selected_lesson[0]][0]
+                delete_lesson(lesson_id)
+                update_lessons_list()
+                messagebox.showinfo("Успех", "Занятие удалено успешно.")
+
+        def delete_lesson(lesson_id):
             delete_query = "DELETE FROM `Grafik Zaniatiy` WHERE id = %s"
             cursor.execute(delete_query, (lesson_id,))
             conn.commit()
             update_lessons_list()
-    def update():
-         lessons_listbox.delete(0, "end")
-         update_lessons_list()
-         messagebox.showinfo("Успех","Функция работает.")
 
-    def update_lessons_list():
-        lessons_listbox.delete(0, "end")
-        select_lessons_query = "SELECT id, date, day_of_week, class, lesson_name, lesson_number, lesson_type FROM `Grafik Zaniatiy` WHERE username = %s ORDER BY date, lesson_number"
-        cursor.execute(select_lessons_query, (username,))
-        global lessons_list
-        lessons_list = cursor.fetchall()
-        for lesson in lessons_list:
-            date = lesson[1].strftime("%d.%m.%Y")
-            day_of_week = lesson[2]
-            class_name = lesson[3]
-            lesson_name = lesson[4]
-            lesson_number = lesson[5]
-            lesson_type = lesson[6]
-            lessons_listbox.insert("end", f"{date}, {day_of_week}, Класс: {class_name}, Урок: {lesson_name}, Урок №{lesson_number}, Тип: {lesson_type}")
+        def update():
+            lessons_listbox.delete(0, "end")
+            update_lessons_list()
+            messagebox.showinfo("Успех", "Функция работает.")
 
-    def on_date_selected():
-        selected_date = cal.get_date()
-        selected_date_label.config(text=selected_date)
-        day_of_week = datetime.strptime(selected_date, "%Y-%m-%d").strftime("%A")
-        day_of_week_label.config(text=day_of_week)
+        def on_date_selected():
+            selected_date = cal.get_date()
+            selected_date_label.config(text=selected_date)
+            day_of_week = datetime.strptime(selected_date, "%Y-%m-%d").strftime("%A")
+            day_of_week_label.config(text=day_of_week)
 
+        grafik_window = tk.Tk()
+        grafik_window.title("Мой график занятий")
 
-    grafik_frame = ttk.Frame(grafik_window)
-    grafik_frame.pack(pady=20)
+        grafik_frame = ttk.Frame(grafik_window)
+        grafik_frame.pack(pady=20)
 
-    cal = Calendar(grafik_frame, selectmode='day', date_pattern='yyyy-MM-dd')
-    cal.grid(row=0, column=0, columnspan=3, padx=10)
+        cal = Calendar(grafik_frame, selectmode='day', date_pattern='yyyy-MM-dd')
+        cal.grid(row=0, column=0, columnspan=3, padx=10)
 
-    select_date_button = ttk.Button(grafik_frame, text="Выбрать дату", command=on_date_selected)
-    select_date_button.grid(row=1, column=0, columnspan=3, pady=5)
+        select_date_button = ttk.Button(grafik_frame, text="Выбрать дату", command=on_date_selected)
+        select_date_button.grid(row=1, column=0, columnspan=3, pady=5)
 
-    selected_date_label = tk.Label(grafik_frame, text="", font=("Times New Roman", 12))
-    selected_date_label.grid(row=2, column=0, columnspan=3)
+        selected_date_label = tk.Label(grafik_frame, text="", font=("Times New Roman", 12))
+        selected_date_label.grid(row=2, column=0, columnspan=3)
 
-    day_of_week_label = tk.Label(grafik_frame, text="", font=("Times New Roman", 12))
-    day_of_week_label.grid(row=3, column=0, columnspan=3, pady=5)
+        day_of_week_label = tk.Label(grafik_frame, text="", font=("Times New Roman", 12))
+        day_of_week_label.grid(row=3, column=0, columnspan=3, pady=5)
 
-    warning_date_label = tk.Label(grafik_frame, text="Не забудьте нажать на число на которое вам нужна заметка", font=("Times New Roman", 12))
-    warning_date_label.grid(row=11, column=0, columnspan=3, pady=10)
+        warning_date_label = tk.Label(grafik_frame, text="Не забудьте нажать на число на которое вам нужна заметка", font=("Times New Roman", 12))
+        warning_date_label.grid(row=11, column=0, columnspan=3, pady=10)
 
+        class_name_label = tk.Label(grafik_frame, text="Класс:", font=("Times New Roman", 12))
+        class_name_label.grid(row=4, column=0, padx=5)
 
-    class_name_label = tk.Label(grafik_frame, text="Класс:", font=("Times New Roman", 12))
-    class_name_label.grid(row=4, column=0, padx=5)
+        class_name_entry = tk.Entry(grafik_frame)
+        class_name_entry.grid(row=4, column=1, padx=5)
 
-    class_name_entry = tk.Entry(grafik_frame)
-    class_name_entry.grid(row=4, column=1, padx=5)
+        lesson_name_label = tk.Label(grafik_frame, text="Название урока:", font=("Times New Roman", 12))
+        lesson_name_label.grid(row=5, column=0, padx=5)
 
-    lesson_name_label = tk.Label(grafik_frame, text="Название урока:", font=("Times New Roman", 12))
-    lesson_name_label.grid(row=5, column=0, padx=5)
+        lesson_name_entry = tk.Entry(grafik_frame)
+        lesson_name_entry.grid(row=5, column=1, padx=5)
 
-    lesson_name_entry = tk.Entry(grafik_frame)
-    lesson_name_entry.grid(row=5, column=1, padx=5)
+        lesson_number_label = tk.Label(grafik_frame, text="Номер урока:", font=("Times New Roman", 12))
+        lesson_number_label.grid(row=6, column=0, padx=5)
 
-    lesson_number_label = tk.Label(grafik_frame, text="Номер урока:", font=("Times New Roman", 12))
-    lesson_number_label.grid(row=6, column=0, padx=5)
+        lesson_number_var = tk.IntVar()
+        lesson_number_combobox = ttk.Combobox(grafik_frame, textvariable=lesson_number_var, values=list(range(1, 11)), state="readonly")
+        lesson_number_combobox.grid(row=6, column=1, padx=5)
 
-    lesson_number_var = tk.IntVar()
-    lesson_number_combobox = ttk.Combobox(grafik_frame, textvariable=lesson_number_var, values=list(range(1, 11)), state="readonly")
-    lesson_number_combobox.grid(row=6, column=1, padx=5)
+        lesson_type_label = tk.Label(grafik_frame, text="Тип урока:", font=("Times New Roman", 12))
+        lesson_type_label.grid(row=7, column=0, padx=5)
 
-    lesson_type_label = tk.Label(grafik_frame, text="Тип урока:", font=("Times New Roman", 12))
-    lesson_type_label.grid(row=7, column=0, padx=5)
+        lesson_type_var = tk.StringVar()
+        lesson_type_combobox = ttk.Combobox(grafik_frame, textvariable=lesson_type_var, values=["обычный", "проверка", "факультатив", "открытый урок"], state="readonly")
+        lesson_type_combobox.grid(row=7, column=1, padx=5)
 
-    lesson_type_var = tk.StringVar()
-    lesson_type_combobox = ttk.Combobox(grafik_frame, textvariable=lesson_type_var, values=["обычный", "проверка", "факультатив", "открытый урок"], state="readonly")
-    lesson_type_combobox.grid(row=7, column=1, padx=5)
+        add_lesson_button = ttk.Button(grafik_frame, text="Добавить занятие", command=on_add_lesson)
+        add_lesson_button.grid(row=8, column=0, columnspan=2, pady=10)
 
-    add_lesson_button = ttk.Button(grafik_frame, text="Добавить занятие", command=on_add_lesson)
-    add_lesson_button.grid(row=8, column=0, columnspan=2, pady=10)
+        lessons_listbox = tk.Listbox(grafik_frame, width=60, height=10)
+        lessons_listbox.grid(row=9, column=0, columnspan=3, padx=10, pady=10)
 
-    lessons_listbox = tk.Listbox(grafik_frame, width=60, height=10)
-    lessons_listbox.grid(row=9, column=0, columnspan=3, padx=10, pady=10)
+        delete_lesson_button = ttk.Button(grafik_frame, text="Удалить занятие", command=on_delete_lesson)
+        delete_lesson_button.grid(row=10, column=1, columnspan=2, pady=5)
 
-    delete_lesson_button = ttk.Button(grafik_frame, text="Удалить занятие", command=on_delete_lesson)
-    delete_lesson_button.grid(row=10, column=1, columnspan=2, pady=5)  # Изменил координаты для кнопки "Удалить занятие"
+        update_lesson_button = ttk.Button(grafik_frame, text="Обновить", command=update)
+        update_lesson_button.grid(row=10, column=0, pady=10)
 
-    update_lesson_button = ttk.Button(grafik_frame, text="Обновить", command=update)
-    update_lesson_button.grid(row=10, column=0, pady=10)  # Разместил кнопку "Обновить" отдельно
+        update_lessons_list()
+        grafik_window.mainloop()
 
-    update_lessons_list()
-    refresh_lessons_list()  # Запускаем обновление списка занятий в реальном времени
-
-    grafik_window.mainloop()
+    except mysql.connector.Error as e:
+        # Обрабатываем ошибки MySQL здесь
+        log("Ошибка MySQL:")
 
 
 def main_window(username):
@@ -531,9 +519,9 @@ def create_user_folder(username):
 
     try:
         os.makedirs(folder_path)
-        print(f"Создана папка для пользователя: {folder_path}")
+        log(f"Создана папка для пользователя: {folder_path}")
     except FileExistsError:
-        print(f"Папка для пользователя уже существует: {folder_path}")
+        log(f"Папка для пользователя уже существует: {folder_path}")
 
 
 # Создание окна
